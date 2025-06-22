@@ -75,9 +75,9 @@ class _RadioHomePageState extends State<RadioHomePage> {
       if (res.statusCode == 200) {
         final data = json.decode(res.body);
         setState(() {
-          nowTitle = data['title'] ?? "N/A";
-          station = data['station'] ?? "N/A";
-          ip = data['ip'] ?? "N/A";
+          nowTitle = data['title'] ?? "";
+          station = data['station'] ?? "No Station";
+          ip = data['ip'] ?? "-";
           _volumePercent = data['volume'] ?? 50;
         });
       }
@@ -96,9 +96,12 @@ class _RadioHomePageState extends State<RadioHomePage> {
     try {
       final res = await http.get(Uri.parse('$esp32Url/stations'));
       if (res.statusCode == 200) {
-        final data = json.decode(res.body);
+        final List<dynamic> stationList = json.decode(res.body);
         setState(() {
-          stations = List<Map<String, dynamic>>.from(data['stations'] ?? []);
+          stations = stationList.map((station) => {
+            'name': station['name']?.toString() ?? 'Unknown Station',
+            'url': station['url']?.toString() ?? ''
+          }).toList();
           isLoading = false;
         });
       } else {
@@ -145,12 +148,21 @@ class _RadioHomePageState extends State<RadioHomePage> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: nameController, decoration: const InputDecoration(labelText: "Name")),
-            TextField(controller: urlController, decoration: const InputDecoration(labelText: "Stream URL")),
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(labelText: "Name"),
+            ),
+            TextField(
+              controller: urlController,
+              decoration: const InputDecoration(labelText: "Stream URL"),
+            ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
           ElevatedButton(
             onPressed: () async {
               final name = nameController.text.trim();
@@ -196,12 +208,21 @@ class _RadioHomePageState extends State<RadioHomePage> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: nameController, decoration: const InputDecoration(labelText: "Name")),
-            TextField(controller: urlController, decoration: const InputDecoration(labelText: "Stream URL")),
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(labelText: "Name"),
+            ),
+            TextField(
+              controller: urlController,
+              decoration: const InputDecoration(labelText: "Stream URL"),
+            ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
           ElevatedButton(
             onPressed: () async {
               final name = nameController.text.trim();
@@ -319,51 +340,61 @@ class _RadioHomePageState extends State<RadioHomePage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                ElevatedButton(onPressed: () => _sendControl("prev"), child: const Text("⏮️ Prev")),
-                ElevatedButton(onPressed: () => _sendControl("pause"), child: const Text("⏸ Pause")),
-                ElevatedButton(onPressed: () => _sendControl("next"), child: const Text("⏭️ Next")),
+                ElevatedButton(
+                  onPressed: () => _sendControl("prev"),
+                  child: const Text("⏮️ Prev"),
+                ),
+                ElevatedButton(
+                  onPressed: () => _sendControl("pause"),
+                  child: const Text("⏸ Pause"),
+                ),
+                ElevatedButton(
+                  onPressed: () => _sendControl("next"),
+                  child: const Text("⏭️ Next"),
+                ),
               ],
             ),
             const Divider(),
             
-            // Stations list
+            // Stations list header
             const Text("Stations:", style: TextStyle(fontWeight: FontWeight.bold)),
             if (errorMessage.isNotEmpty)
               Text(errorMessage, style: const TextStyle(color: Colors.red)),
-            if (isLoading)
-              const CircularProgressIndicator()
-            else
-              Expanded(
-                child: ListView.builder(
-                  itemCount: stations.length,
-                  itemBuilder: (context, index) {
-                    return Card(
-                      margin: const EdgeInsets.symmetric(vertical: 6),
-                      child: ListTile(
-                        title: Text(stations[index]['name']?.toString() ?? 'Unknown'),
-                        subtitle: Text(stations[index]['url']?.toString() ?? 'No URL'),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.play_arrow),
-                              onPressed: () => _playStation(index),
+            
+            // Stations list
+            Expanded(
+              child: isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : ListView.builder(
+                      itemCount: stations.length,
+                      itemBuilder: (context, index) {
+                        return Card(
+                          margin: const EdgeInsets.symmetric(vertical: 6),
+                          child: ListTile(
+                            title: Text(stations[index]['name']),
+                            subtitle: Text(stations[index]['url']),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.play_arrow),
+                                  onPressed: () => _playStation(index),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.edit),
+                                  onPressed: () => _updateStationDialog(index),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete),
+                                  onPressed: () => _deleteStation(index),
+                                ),
+                              ],
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.edit),
-                              onPressed: () => _updateStationDialog(index),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete),
-                              onPressed: () => _deleteStation(index),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
             
             // Add station button
             ElevatedButton.icon(
