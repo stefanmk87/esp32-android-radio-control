@@ -1,11 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'dart:async';
 
 void main() => runApp(const MyApp());
 
-const String esp32Url = "http://192.168.1.36"; // Replace with your ESP32 IP
+const String esp32Url = "http://192.168.1.36"; // Change to your ESP32 IP
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -13,230 +13,364 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'ESP32 Radio Controller',
-      theme: ThemeData.dark(),
-      home: const RadioController(),
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        primarySwatch: Colors.deepPurple,
+        scaffoldBackgroundColor: const Color(0xFF121212),
+        textTheme: const TextTheme(
+          bodyLarge: TextStyle(color: Colors.white, fontSize: 16),
+          bodyMedium: TextStyle(color: Colors.white70),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ButtonStyle(
+            backgroundColor: const MaterialStatePropertyAll(Colors.deepPurpleAccent),
+            foregroundColor: const MaterialStatePropertyAll(Colors.white),
+            padding: const MaterialStatePropertyAll(EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+            textStyle: const MaterialStatePropertyAll(TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ),
+        sliderTheme: const SliderThemeData(
+          activeTrackColor: Colors.deepPurpleAccent,
+          thumbColor: Colors.deepPurple,
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.black,
+          titleTextStyle: TextStyle(color: Colors.white, fontSize: 20),
+          iconTheme: IconThemeData(color: Colors.white),
+        ),
+      ),
+      home: const RadioHomePage(),
+      debugShowCheckedModeBanner: false,
     );
   }
 }
 
-class RadioController extends StatefulWidget {
-  const RadioController({super.key});
+class RadioHomePage extends StatefulWidget {
+  const RadioHomePage({super.key});
   @override
-  State<RadioController> createState() => _RadioControllerState();
+  State<RadioHomePage> createState() => _RadioHomePageState();
 }
 
-class _RadioControllerState extends State<RadioController> {
-  double _volume = 50;
+class _RadioHomePageState extends State<RadioHomePage> {
+  String nowTitle = "Loading...";
+  String station = "Loading...";
+  String ip = "-";
+  int _volumePercent = 50;
+  Timer? _volumeDebounce;
+  List<Map<String, dynamic>> stations = [];
+  bool isLoading = true;
+  String errorMessage = '';
 
-  String _title = 'Loading...';
-  String _station = '';
-  String _ip = '';
-  int _volumePercent = 0;
-
-  List<dynamic> _stations = [];
-  bool _loadingStations = true;
-
-  Timer? _nowPlayingTimer;
-//
   @override
   void initState() {
     super.initState();
-    fetchStations();
     fetchNowPlaying();
-    // Refresh metadata every 10 seconds automatically
-    _nowPlayingTimer = Timer.periodic(const Duration(seconds: 10), (_) => fetchNowPlaying());
-  }
-
-  @override
-  void dispose() {
-    _nowPlayingTimer?.cancel();
-    super.dispose();
-  }
-
-  Future<void> fetchStations() async {
-    setState(() => _loadingStations = true);
-    try {
-      final response = await http.get(Uri.parse('$esp32Url/api/stations'));
-      if (response.statusCode == 200) {
-        setState(() {
-          _stations = json.decode(response.body);
-          _loadingStations = false;
-        });
-      } else {
-        setState(() => _loadingStations = false);
-      }
-    } catch (e) {
-      setState(() => _loadingStations = false);
-    }
+    fetchStations();
+    Timer.periodic(const Duration(seconds: 3), (_) => fetchNowPlaying());
   }
 
   Future<void> fetchNowPlaying() async {
     try {
-      final response = await http.get(Uri.parse('$esp32Url/nowplaying'));
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
+      final res = await http.get(Uri.parse('$esp32Url/nowplaying'));
+      if (res.statusCode == 200) {
+        final data = json.decode(res.body);
         setState(() {
-          _title = data['title'] ?? 'No Title';
-          _station = data['station'] ?? 'Unknown Station';
-          _ip = data['ip'] ?? '';
-          _volumePercent = data['volume'] ?? _volumePercent;
-          _volume = _volumePercent.toDouble();
+          nowTitle = data['title'] ?? "N/A";
+          station = data['station'] ?? "N/A";
+          ip = data['ip'] ?? "N/A";
+          _volumePercent = data['volume'] ?? 50;
         });
       }
-    } catch (_) {
-      // ignore errors here, just don't update
+    } catch (e) {
+      setState(() {
+        errorMessage = 'Failed to fetch now playing: ${e.toString()}';
+      });
     }
   }
 
-  Future<void> sendControl(String action) async {
-    final url = Uri.parse('$esp32Url/control');
-    await http.post(url, body: '{"action":"$action"}', headers: {
-      "Content-Type": "application/json",
-    });
-    await fetchNowPlaying(); // update metadata immediately
-  }
-
-  Future<void> setVolume(double value) async {
+  Future<void> fetchStations() async {
     setState(() {
-      _volume = value;
-      _volumePercent = value.toInt();
+      isLoading = true;
+      errorMessage = '';
     });
-    final url = Uri.parse('$esp32Url/control');
-    await http.post(url,
-        body: '{"action":"volume", "volume":${value / 100}}',
-        headers: {"Content-Type": "application/json"});
-    await fetchNowPlaying();
+    try {
+      final res = await http.get(Uri.parse('$esp32Url/stations'));
+      if (res.statusCode == 200) {
+        final data = json.decode(res.body);
+        setState(() {
+          stations = List<Map<String, dynamic>>.from(data['stations'] ?? []);
+          isLoading = false;
+        });
+      } else {
+        setState(() {
+          errorMessage = 'Failed to load stations (HTTP ${res.statusCode})';
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        errorMessage = 'Failed to fetch stations: ${e.toString()}';
+        isLoading = false;
+      });
+    }
   }
 
-  Future<void> playStation(int index) async {
-    await http.get(Uri.parse('$esp32Url/play?index=$index'));
-    await fetchNowPlaying();
+  void _setVolumeDebounced(double value) {
+    setState(() => _volumePercent = value.toInt());
+    _volumeDebounce?.cancel();
+    _volumeDebounce = Timer(const Duration(milliseconds: 300), () async {
+      try {
+        await http.post(
+          Uri.parse('$esp32Url/control'),
+          body: jsonEncode({"action": "volume", "volume": value / 100}),
+          headers: {"Content-Type": "application/json"},
+        );
+        fetchNowPlaying();
+      } catch (e) {
+        setState(() {
+          errorMessage = 'Volume control failed: ${e.toString()}';
+        });
+      }
+    });
   }
 
-  Future<void> deleteStation(int index) async {
-    await http.get(Uri.parse('$esp32Url/delete?index=$index'));
-    await fetchStations();
-  }
-
-  Future<void> editStationDialog(int index) async {
-    final nameController = TextEditingController(text: _stations[index]['name']);
-    final urlController = TextEditingController(text: _stations[index]['url']);
+  Future<void> _addStationDialog() async {
+    final nameController = TextEditingController();
+    final urlController = TextEditingController();
 
     await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Edit Station"),
+      builder: (_) => AlertDialog(
+        title: const Text("Add Station"),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(controller: nameController, decoration: const InputDecoration(labelText: "Name")),
-            TextField(controller: urlController, decoration: const InputDecoration(labelText: "URL")),
+            TextField(controller: urlController, decoration: const InputDecoration(labelText: "Stream URL")),
           ],
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
           ElevatedButton(
             onPressed: () async {
-              final name = nameController.text;
-              final url = urlController.text;
-              final body = json.encode({"index": index, "name": name, "url": url});
-              await http.post(
-                Uri.parse('$esp32Url/edit'),
-                headers: {"Content-Type": "application/json"},
-                body: body,
-              );
-              Navigator.pop(context);
-              await fetchStations();
+              final name = nameController.text.trim();
+              final url = urlController.text.trim();
+              if (name.isNotEmpty && url.isNotEmpty) {
+                try {
+                  final response = await http.post(
+                    Uri.parse('$esp32Url/stations'),
+                    headers: {"Content-Type": "application/json"},
+                    body: jsonEncode({"name": name, "url": url}),
+                  );
+                  if (response.statusCode == 200) {
+                    Navigator.pop(context);
+                    fetchStations();
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Failed to add station: ${response.body}')),
+                    );
+                  }
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error adding station: ${e.toString()}')),
+                  );
+                }
+              }
             },
-            child: const Text("Save"),
+            child: const Text("Add"),
           ),
         ],
       ),
     );
   }
 
+  Future<void> _updateStationDialog(int index) async {
+    final stationData = stations[index];
+    final nameController = TextEditingController(text: stationData['name']);
+    final urlController = TextEditingController(text: stationData['url']);
+
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Update Station"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: nameController, decoration: const InputDecoration(labelText: "Name")),
+            TextField(controller: urlController, decoration: const InputDecoration(labelText: "Stream URL")),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          ElevatedButton(
+            onPressed: () async {
+              final name = nameController.text.trim();
+              final url = urlController.text.trim();
+              if (name.isNotEmpty && url.isNotEmpty) {
+                try {
+                  final response = await http.post(
+                    Uri.parse('$esp32Url/stations/$index'),
+                    headers: {"Content-Type": "application/json"},
+                    body: jsonEncode({"name": name, "url": url}),
+                  );
+                  if (response.statusCode == 200) {
+                    Navigator.pop(context);
+                    fetchStations();
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Failed to update station: ${response.body}')),
+                    );
+                  }
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error updating station: ${e.toString()}')),
+                  );
+                }
+              }
+            },
+            child: const Text("Update"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteStation(int index) async {
+    try {
+      final response = await http.delete(Uri.parse('$esp32Url/stations/$index'));
+      if (response.statusCode == 200) {
+        fetchStations();
+      } else {
+        setState(() {
+          errorMessage = 'Failed to delete station: ${response.body}';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        errorMessage = 'Error deleting station: ${e.toString()}';
+      });
+    }
+  }
+
+  Future<void> _playStation(int index) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$esp32Url/play'),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"index": index}),
+      );
+      if (response.statusCode != 200) {
+        setState(() {
+          errorMessage = 'Failed to play station: ${response.body}';
+        });
+      }
+      fetchNowPlaying();
+    } catch (e) {
+      setState(() {
+        errorMessage = 'Error playing station: ${e.toString()}';
+      });
+    }
+  }
+
+  Future<void> _sendControl(String action) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$esp32Url/control'),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"action": action}),
+      );
+      if (response.statusCode != 200) {
+        setState(() {
+          errorMessage = 'Control failed: ${response.body}';
+        });
+      }
+      fetchNowPlaying();
+    } catch (e) {
+      setState(() {
+        errorMessage = 'Control error: ${e.toString()}';
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('ESP32 Radio Controller')),
+      appBar: AppBar(title: const Text("ESP32 Web Radio")),
       body: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12.0),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Now Playing:', style: const TextStyle(fontWeight: FontWeight.bold)),
-            Text('Title: $_title'),
-            Text('Station: $_station'),
-            Text('IP: $_ip'),
-            Text('Volume: $_volumePercent%'),
+            // Now playing info
+            Text("Now Playing: $nowTitle", style: const TextStyle(fontSize: 16)),
+            Text("Station: $station"),
+            Text("ESP32 IP: $ip"),
             const SizedBox(height: 20),
+            
+            // Volume control
+            Text("Volume: $_volumePercent%", style: const TextStyle(fontWeight: FontWeight.bold)),
             Slider(
-              value: _volume,
               min: 0,
               max: 100,
-              divisions: 100,
-              label: '${_volume.toInt()}%',
-              onChanged: (value) => setVolume(value),
+              value: _volumePercent.toDouble(),
+              onChanged: _setVolumeDebounced,
             ),
-            const SizedBox(height: 20),
-
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
+            
+            // Player controls
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                ElevatedButton(
-                  onPressed: () => sendControl("prev"),
-                  child: const Text("⏮ Previous"),
-                ),
-                ElevatedButton(
-                  onPressed: () => sendControl("pause"),
-                  child: const Text("⏸ Pause"),
-                ),
-                ElevatedButton(
-                  onPressed: () => sendControl("next"),
-                  child: const Text("⏭ Next"),
-                ),
+                ElevatedButton(onPressed: () => _sendControl("prev"), child: const Text("⏮️ Prev")),
+                ElevatedButton(onPressed: () => _sendControl("pause"), child: const Text("⏸ Pause")),
+                ElevatedButton(onPressed: () => _sendControl("next"), child: const Text("⏭️ Next")),
               ],
             ),
-
-            const SizedBox(height: 30),
-
-            const Text("Stations:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            _loadingStations
-                ? const Center(child: CircularProgressIndicator())
-                : Expanded(
-                    child: ListView.builder(
-                      itemCount: _stations.length,
-                      itemBuilder: (context, index) {
-                        final station = _stations[index];
-                        return Card(
-                          margin: const EdgeInsets.symmetric(vertical: 6),
-                          child: ListTile(
-                            title: Text(station['name']),
-                            subtitle: Text(station['url']),
-                            trailing: Wrap(
-                              spacing: 8,
-                              children: [
-                                ElevatedButton(
-                                  onPressed: () => playStation(index),
-                                  child: const Text("Play"),
-                                ),
-                                ElevatedButton(
-                                  onPressed: () => editStationDialog(index),
-                                  child: const Text("Edit"),
-                                ),
-                                ElevatedButton(
-                                  onPressed: () => deleteStation(index),
-                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                                  child: const Text("Delete"),
-                                ),
-                              ],
+            const Divider(),
+            
+            // Stations list
+            const Text("Stations:", style: TextStyle(fontWeight: FontWeight.bold)),
+            if (errorMessage.isNotEmpty)
+              Text(errorMessage, style: const TextStyle(color: Colors.red)),
+            if (isLoading)
+              const CircularProgressIndicator()
+            else
+              Expanded(
+                child: ListView.builder(
+                  itemCount: stations.length,
+                  itemBuilder: (context, index) {
+                    return Card(
+                      margin: const EdgeInsets.symmetric(vertical: 6),
+                      child: ListTile(
+                        title: Text(stations[index]['name']?.toString() ?? 'Unknown'),
+                        subtitle: Text(stations[index]['url']?.toString() ?? 'No URL'),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.play_arrow),
+                              onPressed: () => _playStation(index),
                             ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
+                            IconButton(
+                              icon: const Icon(Icons.edit),
+                              onPressed: () => _updateStationDialog(index),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete),
+                              onPressed: () => _deleteStation(index),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            
+            // Add station button
+            ElevatedButton.icon(
+              onPressed: _addStationDialog,
+              icon: const Icon(Icons.add),
+              label: const Text("Add Station"),
+            ),
           ],
         ),
       ),
