@@ -273,25 +273,39 @@ class _RadioHomePageState extends State<RadioHomePage> {
     }
   }
 
-  Future<void> _playStation(int index) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$esp32Url/play'),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"index": index}),
+Future<void> _playStation(int index) async {
+  try {
+    final response = await http.post(
+      Uri.parse('$esp32Url/play'),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({"index": index}),
+    );
+    
+    if (response.statusCode == 200) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Now playing: ${stations[index]['name']}'),
+          duration: const Duration(seconds: 2),
+        ),
       );
-      if (response.statusCode != 200) {
-        setState(() {
-          errorMessage = 'Failed to play station: ${response.body}';
-        });
-      }
       fetchNowPlaying();
-    } catch (e) {
-      setState(() {
-        errorMessage = 'Error playing station: ${e.toString()}';
-      });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${response.body}'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Network error: ${e.toString()}'),
+        backgroundColor: Colors.red,
+      ),
+    );
   }
+}
 
   Future<void> _sendControl(String action) async {
     try {
