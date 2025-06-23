@@ -23,10 +23,10 @@ class MyApp extends StatelessWidget {
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ButtonStyle(
-            backgroundColor: const MaterialStatePropertyAll(Colors.deepPurpleAccent),
-            foregroundColor: const MaterialStatePropertyAll(Colors.white),
-            padding: const MaterialStatePropertyAll(EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
-            textStyle: const MaterialStatePropertyAll(TextStyle(fontWeight: FontWeight.bold)),
+            backgroundColor: const WidgetStatePropertyAll(Colors.deepPurpleAccent),
+            foregroundColor: const WidgetStatePropertyAll(Colors.white),
+            padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+            textStyle: const WidgetStatePropertyAll(TextStyle(fontWeight: FontWeight.bold)),
           ),
         ),
         sliderTheme: const SliderThemeData(
