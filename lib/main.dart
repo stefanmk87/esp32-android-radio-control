@@ -230,9 +230,9 @@ class _RadioHomePageState extends State<RadioHomePage> {
               if (name.isNotEmpty && url.isNotEmpty) {
                 try {
                   final response = await http.post(
-                    Uri.parse('$esp32Url/stations/$index'),
-                    headers: {"Content-Type": "application/json"},
-                    body: jsonEncode({"name": name, "url": url}),
+                    Uri.parse('$esp32Url/update'),
+                    headers: {"Content-Type": "application/x-www-form-urlencoded"},
+                    body: "index=$index&name=${Uri.encodeComponent(name)}&url=${Uri.encodeComponent(url)}",
                   );
                   if (response.statusCode == 200) {
                     Navigator.pop(context);
@@ -258,7 +258,9 @@ class _RadioHomePageState extends State<RadioHomePage> {
 
   Future<void> _deleteStation(int index) async {
     try {
-      final response = await http.delete(Uri.parse('$esp32Url/stations/$index'));
+      final response = await http.get(
+        Uri.parse('$esp32Url/delete?index=$index'),
+      );
       if (response.statusCode == 200) {
         fetchStations();
       } else {
@@ -275,12 +277,9 @@ class _RadioHomePageState extends State<RadioHomePage> {
 
 Future<void> _playStation(int index) async {
   try {
-    final response = await http.post(
-      Uri.parse('$esp32Url/play'),
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode({"index": index}),
+    final response = await http.get(
+      Uri.parse('$esp32Url/play?index=$index'),
     );
-    
     if (response.statusCode == 200) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
